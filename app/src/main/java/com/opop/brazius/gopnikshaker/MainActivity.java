@@ -8,9 +8,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.media.MediaPlayer;
 import android.os.Handler;
-import android.preference.PreferenceManager;
-import android.support.v4.content.ContextCompat;
-import android.support.v7.app.AppCompatActivity;
+import androidx.preference.PreferenceManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -21,25 +19,25 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 
+import androidx.appcompat.app.AppCompatActivity;
+
 import java.util.ArrayList;
 import java.util.Random;
 
-public class MainActivity extends AppCompatActivity {
-    /* put this into your activity class */
-    private SensorManager mSensorManager;
-    private float mAccel; // acceleration apart from gravity
-    private float mAccelCurrent; // current acceleration including gravity
-    private float mAccelLast; // last acceleration including gravity
+public class MainActivity extends AppCompatActivity implements ShakeDetector.Listener{
+
     private Context context;
     private WebView wv;
     private MediaPlayer mp;
     private TextView counter;
-
+    ShakeDetector sd;
+    SensorManager sensorManager;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         context = this;
+
         wv = findViewById(R.id.webView);
         counter = findViewById(R.id.counter);
         counter.setText(String.format("total shakes : %s",PreferenceManager.getDefaultSharedPreferences(context).getLong("counter",0)));
@@ -51,12 +49,9 @@ public class MainActivity extends AppCompatActivity {
 
         mp = MediaPlayer.create(context, R.raw.hardbass);
         mp.setLooping(true);
-
-        mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        mSensorManager.registerListener(mSensorListener, mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL);
-        mAccel = 0.00f;
-        mAccelCurrent = SensorManager.GRAVITY_EARTH;
-        mAccelLast = SensorManager.GRAVITY_EARTH;
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        sd = new ShakeDetector(this);
+        sd.start(sensorManager);
     }
 
     private void loadGopnik(){
@@ -64,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
             mp.release();
         }
         Random rnd = new Random();
-        switch (rnd.nextInt(5)){
+        switch (rnd.nextInt(6)){
             case 0:
                 wv.loadUrl("file:///android_res/raw/gopnik1.gif");
                 mp = MediaPlayer.create(context, R.raw.hardbass);
@@ -85,6 +80,11 @@ public class MainActivity extends AppCompatActivity {
                 mp = MediaPlayer.create(context, R.raw.bbz);
                 mp.setLooping(true);
                 break;
+            case 4:
+                wv.loadUrl("file:///android_res/raw/gif1.gif");
+                mp = MediaPlayer.create(context, R.raw.bbz);
+                mp.setLooping(true);
+                break;
             default:
                 wv.loadUrl("file:///android_res/raw/napravlenije.gif");
                 mp = MediaPlayer.create(context, R.raw.bbz);
@@ -93,51 +93,32 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
-    private final SensorEventListener mSensorListener = new SensorEventListener() {
-
-        public void onSensorChanged(SensorEvent se) {
-            float x = se.values[0];
-            float y = se.values[1];
-            float z = se.values[2];
-            mAccelLast = mAccelCurrent;
-            mAccelCurrent = (float) Math.sqrt((double) (x*x + y*y + z*z));
-            Log.d("xxx",String.valueOf(x));
-            Log.d("yyy",String.valueOf(y));
-            Log.d("zzz",String.valueOf(z));
-
-            float delta = mAccelCurrent - mAccelLast;
-            mAccel = mAccel * 0.9f + delta; // perform low-cut filter
-            if (mAccel > 3) {
-                loadGopnik();
-                wv.setVisibility(View.VISIBLE);
-                PreferenceManager.getDefaultSharedPreferences(context)
-                        .edit()
-                        .putLong("counter",PreferenceManager.getDefaultSharedPreferences(context).getLong("counter",0)+1).apply();
-                counter.setText(String.format("total shakes : %s",PreferenceManager.getDefaultSharedPreferences(context).getLong("counter",0)));
-                counter.bringToFront();
-                try {
-                    mp.start();
-                }catch (Exception e){
-                    e.printStackTrace();
-                }
-            }
-        }
-
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {
-        }
-    };
-
     @Override
     protected void onResume() {
         super.onResume();
-        mSensorManager.registerListener(mSensorListener, mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL);
+        sd.start(sensorManager);
     }
 
     @Override
     protected void onPause() {
-        mSensorManager.unregisterListener(mSensorListener);
+        sd.stop();
         mp.release();
         super.onPause();
+    }
+
+    @Override
+    public void hearShake() {
+        loadGopnik();
+        wv.setVisibility(View.VISIBLE);
+        PreferenceManager.getDefaultSharedPreferences(context)
+                .edit()
+                .putLong("counter",PreferenceManager.getDefaultSharedPreferences(context).getLong("counter",0)+1).apply();
+        counter.setText(String.format("total shakes : %s",PreferenceManager.getDefaultSharedPreferences(context).getLong("counter",0)));
+        counter.bringToFront();
+        try {
+            mp.start();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
     }
 }
